@@ -165,6 +165,24 @@
   .member-pill .pill-avatar{display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--gray-bg); font-size:9.5px; font-weight:800; color:var(--navy);}
   .member-pill.selected{border-color:var(--teal); background:var(--teal-light); color:var(--navy);}
 
+  /* Team Members roster — shared across the NMR Digital portal, so a person
+     added or renamed here shows up in Planner and Estimates too. */
+  .roster-row{
+    display:flex; align-items:center; gap:12px;
+    padding:9px 0; border-bottom:1px solid var(--gray-border);
+  }
+  .roster-row:last-child{border-bottom:none;}
+  .roster-row input[type=text]{flex:1;}
+  .avatar{
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--white); font-size:12px; font-weight:800;
+  }
+  .roster-add{display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--gray-border);}
+  .roster-add input{flex:1;}
+  .roster-remove{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;}
+  .roster-remove:hover{color:var(--red);}
+
   .link-status{font-size:12.5px; color:var(--gray-text); margin-top:8px; line-height:1.5;}
   .link-status a{color:var(--teal); font-weight:700; text-decoration:none;}
   .link-status a:hover{text-decoration:underline;}
@@ -281,6 +299,7 @@
     <nav class="nav-links" id="navLinks">
       <div class="nav-item active" data-view="form">New Meeting</div>
       <div class="nav-item" data-view="log">Meeting Log <span class="nav-count" id="logCount">0</span></div>
+      <div class="nav-item" data-view="members">Team Members</div>
       <a class="nav-item" href="https://nmrestimates.netlify.app" target="_blank" rel="noopener">Estimates ↗</a>
       <a class="nav-item" href="https://nmrprojects.netlify.app" target="_blank" rel="noopener">Projects ↗</a>
       <div class="brand-caption">
@@ -428,6 +447,20 @@
       <div id="logList"></div>
     </div>
 
+    <!-- MEMBERS VIEW -->
+    <div id="view-members" style="display:none;">
+      <div class="toolbar">
+        <div>
+          <h1>Team Members</h1>
+          <div class="page-sub">People appear here automatically the first time they sign in to Planner, Estimates, or Meetings — you can edit your own name, and it updates everywhere. Add someone below to reference them before they have an account.</div>
+        </div>
+      </div>
+      <div class="card" style="max-width:560px;">
+        <div id="rosterList"></div>
+        <div class="roster-add" id="rosterAdd"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -514,6 +547,7 @@ let boardsCache = [];
 let estimatesCache = [];
 let membersCache = [];
 let salespeopleCache = [];
+const MEMBER_COLORS = ['#47b2cc','#1e8a5f','#e07b39','#8e6bb8','#c0392b','#17305e','#b8860b','#2e8b8b'];
 
 function uid(){ return 'mt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
@@ -602,6 +636,7 @@ function render(){
   document.getElementById('logCount').textContent = meetings.length;
   renderForm();
   renderLog();
+  renderRoster();
 }
 
 /* ---------------- Form view ---------------- */
@@ -776,6 +811,112 @@ function toggleMember(id){
   if(i >= 0) state.memberIds.splice(i,1); else state.memberIds.push(id);
   renderMemberPicker();
 }
+
+/* ---------------- Team Members roster ----------------
+   Manages the shared `members` collection — the same one Planner and
+   Estimates read and write, so a name change here shows up everywhere.
+   membersCache doubles as the roster's own list; CRUD here keeps it and the
+   memberPicker above in sync without a second round trip to Firestore. */
+function initialsOf(name){
+  return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+}
+function myMemberId(){ return currentUser ? currentUser.uid : ''; }
+function memberById(id){ return membersCache.find(m=>m.id === id); }
+function renderRoster(){
+  const wrap = document.getElementById('rosterList');
+  if(!wrap) return;
+  if(!membersCache.length){
+    wrap.innerHTML = `<div class="check-empty">Nobody yet — teammates appear here automatically the first time they sign in, or add one below.</div>`;
+  } else {
+    const me = myMemberId();
+    wrap.innerHTML = membersCache.map(m=>{
+      const isMe = m.id === me;
+      const editable = isMe || m.isPlaceholder;
+      return `
+      <div class="roster-row">
+        <span class="avatar" style="background:${escAttr(m.color)};">${escAttr(m.initials)}</span>
+        <div style="flex:1; min-width:0;">
+          ${editable
+            ? `<input type="text" value="${escAttr(m.name)}" title="${isMe ? 'Your display name' : 'Rename'}"
+                   onblur="renameMember('${m.id}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">`
+            : `<div style="font-size:13.5px; font-weight:600;">${escHtml(m.name)}</div>`}
+          <div style="font-size:11.5px; color:var(--gray-text); margin-top:2px;">
+            ${m.isPlaceholder ? 'Not signed in yet' : escHtml(m.email||'')}${isMe ? ' · you' : ''}
+          </div>
+        </div>
+        ${isMe ? '' : `<span class="roster-remove" title="Remove member" onclick="removeMember('${m.id}')">✕</span>`}
+      </div>`;
+    }).join('');
+  }
+  const addWrap = document.getElementById('rosterAdd');
+  if(addWrap) addWrap.innerHTML = `
+    <input type="text" id="newMemberName" placeholder="Add a teammate who hasn't signed in yet..."
+      onkeydown="if(event.key==='Enter') addMember()">
+    <button class="btn btn-primary btn-sm" onclick="addMember()">Add</button>`;
+}
+function renameMember(id, name){
+  name = (name||'').trim();
+  const m = memberById(id);
+  if(!m) return;
+  if(!name || name === m.name){ renderRoster(); return; }
+  db.collection('members').doc(id).update({name, initials: initialsOf(name)}).then(()=>{
+    m.name = name; m.initials = initialsOf(name);
+    renderMemberPicker();
+  }).catch(e=>{ console.error(e); showToast("Couldn't save name"); });
+}
+async function addMember(){
+  const input = document.getElementById('newMemberName');
+  const name = (input?.value || '').trim();
+  if(!name) return;
+  const id = 'mem_' + uid();
+  const payload = {
+    name, initials: initialsOf(name),
+    color: MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS.length)],
+    email: '', isPlaceholder: true
+  };
+  try{
+    await db.collection('members').doc(id).set(payload);
+    membersCache.push({id, ...payload});
+    membersCache.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+    input.value = '';
+    renderRoster();
+    renderMemberPicker();
+    showToast(`${name} added`);
+  }catch(e){
+    console.error(e); showToast("Couldn't add member");
+  }
+}
+function removeMember(id){
+  const m = memberById(id);
+  if(!m) return;
+  if(!confirm(`Remove ${m.name} from the roster?`)) return;
+  db.collection('members').doc(id).delete().then(()=>{
+    membersCache = membersCache.filter(x=>x.id !== id);
+    renderRoster();
+    renderMemberPicker();
+  }).catch(e=>{ console.error(e); showToast("Couldn't remove member"); });
+}
+/* The signed-in account is the source of identity: their member doc is keyed
+   by uid and refreshed on each sign-in, matching Planner's convention so the
+   roster is the same real people everywhere. */
+async function upsertMyMember(user){
+  const ref = db.collection('members').doc(user.uid);
+  const snap = await ref.get();
+  const payload = {email: user.email || ''};
+  if(!snap.exists){
+    const name = user.displayName || nameFromEmail(user.email || '');
+    payload.name = name;
+    payload.initials = initialsOf(name);
+    payload.color = MEMBER_COLORS[Math.abs(hashCode(user.uid)) % MEMBER_COLORS.length];
+  }
+  await ref.set(payload, {merge:true});
+}
+function hashCode(s){
+  let h = 0;
+  for(let i=0; i<s.length; i++){ h = ((h<<5) - h + s.charCodeAt(i)) | 0; }
+  return h;
+}
+
 function newMeeting(){
   state = blankMeeting();
   state.takenBy = currentUser ? (currentUser.displayName || nameFromEmail(currentUser.email||'')) : '';
@@ -1108,7 +1249,7 @@ document.querySelectorAll('.nav-item').forEach(el=>{
   el.addEventListener('click', ()=> switchView(el.dataset.view));
 });
 function switchView(view){
-  ['form','log'].forEach(v=>{
+  ['form','log','members'].forEach(v=>{
     document.getElementById('view-'+v).style.display = (v===view) ? '' : 'none';
   });
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -1261,6 +1402,7 @@ auth.onAuthStateChanged(user=>{
 
   if(!state.takenBy) state.takenBy = user.displayName || nameFromEmail(user.email || '');
 
+  upsertMyMember(user).catch(e=>console.error(e));
   loadAll();
 });
 </script>
