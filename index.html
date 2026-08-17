@@ -862,13 +862,26 @@ function meetingSummaryText(includeChecklist){
   return lines.join('\n');
 }
 
+const PROJECT_CARD_LIST_NAME = 'Potential';
+
+async function findOrCreatePotentialListId(boardId){
+  const listsSnap = await db.collection('boards').doc(boardId).collection('lists').get();
+  const lists = listsSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  const existing = lists.find(l => (l.name||'').trim().toLowerCase() === PROJECT_CARD_LIST_NAME.toLowerCase());
+  if(existing) return existing.id;
+  const listId = uid();
+  await db.collection('boards').doc(boardId).collection('lists').doc(listId).set({
+    name: PROJECT_CARD_LIST_NAME, pos: maxPosOf(lists) + 1000, createdAt: new Date().toISOString()
+  });
+  return listId;
+}
+
 async function createProjectCardFromMeeting(){
   readForm();
   if(!state.clientName){ showToast("Add a client or company name first"); return; }
   await saveMeeting();
   try{
     let boardId = state.linkedBoardId;
-    let targetListId;
     if(!boardId){
       boardId = uid();
       const minPos = boardsCache.reduce((m,b)=> b.pos != null ? Math.min(m, b.pos) : m, Infinity);
@@ -879,23 +892,9 @@ async function createProjectCardFromMeeting(){
         name: boardName, labels: DEFAULT_LABELS, customFields: DEFAULT_CUSTOM_FIELDS,
         pos, createdAt: now, updatedAt: now
       });
-      const listId = uid();
-      await db.collection('boards').doc(boardId).collection('lists').doc(listId).set({
-        name: 'To Do', pos: 1000, createdAt: now
-      });
-      targetListId = listId;
       boardsCache.push({id:boardId, name:boardName, pos});
-    } else {
-      const listsSnap = await db.collection('boards').doc(boardId).collection('lists').orderBy('pos').limit(1).get();
-      if(!listsSnap.empty){
-        targetListId = listsSnap.docs[0].id;
-      } else {
-        targetListId = uid();
-        await db.collection('boards').doc(boardId).collection('lists').doc(targetListId).set({
-          name: 'To Do', pos: 1000, createdAt: new Date().toISOString()
-        });
-      }
     }
+    const targetListId = await findOrCreatePotentialListId(boardId);
     const cardsSnap = await db.collection('boards').doc(boardId).collection('cards')
       .where('listId', '==', targetListId).get();
     const existingCards = cardsSnap.docs.map(d=>d.data());
