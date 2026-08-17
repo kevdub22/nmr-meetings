@@ -299,7 +299,6 @@
     <nav class="nav-links" id="navLinks">
       <div class="nav-item active" data-view="form">New Meeting</div>
       <div class="nav-item" data-view="log">Meeting Log <span class="nav-count" id="logCount">0</span></div>
-      <div class="nav-item" data-view="members">Team Members</div>
       <a class="nav-item" href="https://nmrestimates.netlify.app" target="_blank" rel="noopener">Estimates ↗</a>
       <a class="nav-item" href="https://nmrprojects.netlify.app" target="_blank" rel="noopener">Projects ↗</a>
       <div class="brand-caption">
@@ -447,15 +446,17 @@
       <div id="logList"></div>
     </div>
 
-    <!-- MEMBERS VIEW -->
+    <!-- SETTINGS VIEW -->
     <div id="view-members" style="display:none;">
       <div class="toolbar">
         <div>
-          <h1>Team Members</h1>
-          <div class="page-sub">People appear here automatically the first time they sign in to Planner, Estimates, or Meetings — you can edit your own name, and it updates everywhere. Add someone below to reference them before they have an account.</div>
+          <h1>Settings</h1>
+          <div class="page-sub">Account and workspace-wide settings.</div>
         </div>
       </div>
       <div class="card" style="max-width:560px;">
+        <div class="card-title">Team Members</div>
+        <div class="page-sub" style="margin:-6px 0 14px 0;">People appear here automatically the first time they sign in to Planner, Estimates, or Meetings — you can edit your own name, and it updates everywhere. Add someone below to reference them before they have an account.</div>
         <div id="rosterList"></div>
         <div class="roster-add" id="rosterAdd"></div>
       </div>
@@ -1372,7 +1373,7 @@ function renderMe(){
   if(!currentUser){ box.innerHTML = ''; return; }
   box.innerHTML = `
     <div class="me-name">${escHtml(currentUser.displayName || currentUser.email)}</div>
-    <button class="me-signout" onclick="signOutNow()">Sign out</button>`;
+    <button class="me-signout" onclick="switchView('members')">Settings</button> · <button class="me-signout" onclick="signOutNow()">Sign out</button>`;
 }
 
 initRichTextFields();
