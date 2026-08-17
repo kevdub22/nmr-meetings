@@ -323,7 +323,7 @@
           <div><label>Contact Name</label><input type="text" id="fContactName" placeholder="Who you spoke with"></div>
           <div><label>Contact Email</label><input type="email" id="fContactEmail" placeholder="name@company.com"></div>
           <div><label>Contact Phone</label><input type="tel" id="fContactPhone" placeholder="(555) 555-5555"></div>
-          <div><label>Event Type</label><input type="text" id="fEventType" placeholder="e.g. Gala, Conference"></div>
+          <div><label>Project Code</label><input type="text" id="fProjectCode" placeholder="e.g. ASH26"></div>
           <div><label>Event Date</label><input type="date" id="fEventDate"></div>
           <div><label>Headcount</label><input type="number" id="fHeadcount" min="0" placeholder="Est. attendees"></div>
           <div><label>Budget Discussed</label><input type="text" id="fBudget" placeholder="e.g. $15k&ndash;20k"></div>
@@ -422,7 +422,7 @@
             <button class="log-tab active" id="logTabActive" onclick="setLogFilter('active')">Active</button>
             <button class="log-tab" id="logTabArchived" onclick="setLogFilter('archived')">Archived</button>
           </div>
-          <input type="text" id="logSearch" placeholder="Search by client, contact, or event type..." style="width:260px;" oninput="renderLog()">
+          <input type="text" id="logSearch" placeholder="Search by client, contact, or project code..." style="width:260px;" oninput="renderLog()">
         </div>
       </div>
       <div id="logList"></div>
@@ -524,7 +524,7 @@ function blankMeeting(){
     id, savedAt: null,
     meetingDate: today, takenBy: '',
     clientName:'', contactName:'', contactEmail:'', contactPhone:'',
-    eventType:'', eventDate:'', headcount:'', budget:'',
+    projectCode:'', eventDate:'', headcount:'', budget:'',
     servicesDiscussed:'', notes:'', nextSteps:'',
     checklist:[], archived:false,
     linkedBoardId:'', linkedEstimateId:'',
@@ -613,7 +613,7 @@ function renderForm(){
   document.getElementById('fContactName').value = state.contactName || '';
   document.getElementById('fContactEmail').value = state.contactEmail || '';
   document.getElementById('fContactPhone').value = state.contactPhone || '';
-  document.getElementById('fEventType').value = state.eventType || '';
+  document.getElementById('fProjectCode').value = state.projectCode || '';
   document.getElementById('fEventDate').value = state.eventDate || '';
   document.getElementById('fHeadcount').value = state.headcount || '';
   document.getElementById('fBudget').value = state.budget || '';
@@ -637,7 +637,7 @@ function readForm(){
   state.contactName = document.getElementById('fContactName').value.trim();
   state.contactEmail = document.getElementById('fContactEmail').value.trim();
   state.contactPhone = document.getElementById('fContactPhone').value.trim();
-  state.eventType = document.getElementById('fEventType').value.trim();
+  state.projectCode = document.getElementById('fProjectCode').value.trim();
   state.eventDate = document.getElementById('fEventDate').value;
   state.headcount = document.getElementById('fHeadcount').value;
   state.budget = document.getElementById('fBudget').value.trim();
@@ -849,7 +849,7 @@ function logCardHtml(m){
   <div class="log-card${m.archived ? ' is-archived' : ''}">
     <div>
       <div style="font-weight:700; color:var(--navy); font-size:14.5px;">${escHtml(m.clientName || "Untitled Meeting")}${linkedBits.join('')}</div>
-      <div class="log-meta">${escHtml(m.eventType||"No event type")} · ${escHtml(m.contactName||"No contact")} · ${d}</div>
+      <div class="log-meta">${escHtml(m.projectCode||"No project code")} · ${escHtml(m.contactName||"No contact")} · ${d}</div>
     </div>
     <div class="log-right">
       <div class="log-actions">
@@ -873,7 +873,7 @@ function renderLog(){
   const query = (document.getElementById('logSearch')?.value || "").trim().toLowerCase();
   if(query){
     pool = pool.filter(m=>{
-      const haystack = [m.clientName, m.contactName, m.eventType].map(v=>(v||"").toLowerCase()).join(" ");
+      const haystack = [m.clientName, m.contactName, m.projectCode].map(v=>(v||"").toLowerCase()).join(" ");
       return haystack.includes(query);
     });
   }
@@ -1027,7 +1027,7 @@ async function createProjectCardFromMeeting(){
       const minPos = boardsCache.reduce((m,b)=> b.pos != null ? Math.min(m, b.pos) : m, Infinity);
       const pos = minPos === Infinity ? 1000 : minPos - 1000;
       const now = new Date().toISOString();
-      const boardName = state.clientName + (state.eventType ? ' — ' + state.eventType : '');
+      const boardName = state.clientName + (state.projectCode ? ' — ' + state.projectCode : '');
       await db.collection('boards').doc(boardId).set({
         name: boardName, labels: DEFAULT_LABELS, customFields: DEFAULT_CUSTOM_FIELDS,
         pos, createdAt: now, updatedAt: now
@@ -1041,7 +1041,7 @@ async function createProjectCardFromMeeting(){
     const cardId = uid();
     await db.collection('boards').doc(boardId).collection('cards').doc(cardId).set({
       listId: targetListId,
-      title: state.clientName + (state.eventType ? ' — ' + state.eventType : ''),
+      title: state.clientName + (state.projectCode ? ' — ' + state.projectCode : ''),
       pos: maxPosOf(existingCards) + 1000,
       desc: meetingSummaryText(false),
       labelIds: state.labelIds || [], memberIds: state.memberIds || [],
@@ -1076,7 +1076,7 @@ async function createEstimateFromMeeting(){
       id, savedAt: new Date().toISOString(),
       meta: {
         client: state.clientName,
-        project: state.clientName + (state.eventType ? ' — ' + state.eventType : ''),
+        project: state.clientName + (state.projectCode ? ' — ' + state.projectCode : ''),
         estNum:'', location:'', venue:'',
         startDate: state.eventDate || today, endDate: state.eventDate || today,
         preparedBy: state.takenBy || '',
