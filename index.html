@@ -339,7 +339,7 @@
         <div id="jobTypeExtra" style="display:none; margin-top:14px;">
           <div style="margin-bottom:14px;">
             <label>Labels</label>
-            <div class="card-sub" style="margin:-2px 0 8px;">From the linked board's label set (or NMR's default set if none is linked yet).</div>
+            <div class="card-sub" style="margin:-2px 0 8px;">Live from the "Video" or "Interactives" board in Projects, based on job type.</div>
             <div id="labelPicker" class="pill-picker"></div>
           </div>
           <div class="grid grid-2">
@@ -730,14 +730,13 @@ function populateSalespersonDropdown(){
 }
 function onLinkedBoardChange(){
   state.linkedBoardId = document.getElementById('fLinkedBoard').value;
-  const validIds = boardLabelsFor(state.linkedBoardId).map(l=>l.id);
-  state.labelIds = (state.labelIds||[]).filter(id=>validIds.includes(id));
-  renderLabelPicker();
   renderConvertStatus();
 }
 function onJobTypeChange(){
   state.jobType = document.getElementById('fJobType').value;
   updateJobTypeExtraVisibility();
+  const validIds = labelsForJobType(state.jobType).map(l=>l.id);
+  state.labelIds = (state.labelIds||[]).filter(id=>validIds.includes(id));
   renderLabelPicker();
   renderMemberPicker();
 }
@@ -746,13 +745,10 @@ function updateJobTypeExtraVisibility(){
   if(wrap) wrap.style.display = state.jobType ? 'block' : 'none';
 }
 
-/* Labels live per-board (see boardLabelsFor / DEFAULT_LABELS below); a board
-   that hasn't customized its set falls back to NMR's shared default, same
-   fallback the Project Planner itself uses. */
 function renderLabelPicker(){
   const wrap = document.getElementById('labelPicker');
   if(!wrap) return;
-  const labels = boardLabelsFor(state.linkedBoardId);
+  const labels = labelsForJobType(state.jobType);
   wrap.innerHTML = labels.map(l=>{
     const on = (state.labelIds||[]).includes(l.id);
     return `<button type="button" class="label-pill${on ? ' selected' : ''}" style="background:${escAttr(l.color||'#dedede')}" onclick="toggleLabel('${l.id}')">${escHtml(l.name||'Unnamed')}</button>`;
@@ -942,15 +938,39 @@ const DEFAULT_LABELS = [
   {id:'lb_programming', name:'Programming',   color:'#dedede'}
 ];
 
-/* Mirrors the Project Planner's boardLabels() — a board's own `labels` array
-   wins once it has real (named) entries, otherwise fall back to the shared
-   default set so a not-yet-linked or not-yet-customized board still shows
-   something to pick from. */
-function boardLabelsFor(boardId){
-  const b = boardsCache.find(x=>x.id === boardId);
-  if(!b || !Array.isArray(b.labels) || !b.labels.length) return DEFAULT_LABELS;
-  if(b.labels.every(l=>!(l.name||'').trim())) return DEFAULT_LABELS;
+/* Interactive jobs use NMR's standard label set above. Video jobs use the
+   "Video" board's own label set instead. Fallback copies below (as they
+   looked when last checked) only cover a gap before boardsCache has loaded
+   or if the named board can't be found — the live board data always wins. */
+const VIDEO_LABELS_FALLBACK = [
+  {id:'lbv_shoot',        name:'Video Shoot',       color:'#b7e4c7'},
+  {id:'lbv_motion',       name:'Motion Graphics',   color:'#f2e08a'},
+  {id:'lbv_photo',        name:'Photography',       color:'#cfe9f8'},
+  {id:'lbv_editing',      name:'Video Editing',     color:'#f9d4e9'},
+  {id:'lbv_production',   name:'Video Production',  color:'#e2d5f5'},
+  {id:'lbv_timelapse',    name:'Time Lapse',        color:'#c9d9f7'},
+  {id:'lbv_lowerthirds',  name:'Lower Thirds',      color:'#f6c9e0'},
+  {id:'lbv_interactive',  name:'Interactive',       color:'#c9d9f7'},
+  {id:'lbv_audio',        name:'Audio',             color:'#dbeca8'},
+  {id:'lbv_graphicarts',  name:'Graphic Arts',      color:'#f9d4e9'},
+  {id:'lbv_closedcap',    name:'Closed Captioning', color:'#f4b9a8'}
+];
+const VIDEO_BOARD_NAME = 'Video';
+const INTERACTIVE_BOARD_NAME = 'Interactives';
+
+function findBoardByName(name){
+  return boardsCache.find(b => (b.name||'').trim().toLowerCase() === name.trim().toLowerCase());
+}
+function liveBoardLabels(boardName, fallback){
+  const b = findBoardByName(boardName);
+  if(!b || !Array.isArray(b.labels) || !b.labels.length) return fallback;
+  if(b.labels.every(l=>!(l.name||'').trim())) return fallback;
   return b.labels;
+}
+function labelsForJobType(jobType){
+  if(jobType === 'Video') return liveBoardLabels(VIDEO_BOARD_NAME, VIDEO_LABELS_FALLBACK);
+  if(jobType === 'Interactive') return liveBoardLabels(INTERACTIVE_BOARD_NAME, DEFAULT_LABELS);
+  return [];
 }
 
 /* Rich-text fields are stored as HTML; anywhere that text needs to leave
