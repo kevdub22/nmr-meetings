@@ -158,6 +158,13 @@
   .check-add input{flex:1;}
   .check-empty{font-size:12.5px; color:var(--gray-text); padding:4px 0;}
 
+  .pill-picker{display:flex; flex-wrap:wrap; gap:6px;}
+  .label-pill{border:2px solid transparent; border-radius:20px; padding:5px 12px; font-size:12.5px; font-weight:700; color:var(--navy); cursor:pointer; font-family:var(--font); opacity:0.55;}
+  .label-pill.selected{opacity:1; border-color:var(--navy);}
+  .member-pill{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--gray-border); background:var(--white); border-radius:20px; padding:5px 12px 5px 5px; font-size:12.5px; font-weight:600; color:var(--gray-text); cursor:pointer; font-family:var(--font);}
+  .member-pill .pill-avatar{display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--gray-bg); font-size:9.5px; font-weight:800; color:var(--navy);}
+  .member-pill.selected{border-color:var(--teal); background:var(--teal-light); color:var(--navy);}
+
   .link-status{font-size:12.5px; color:var(--gray-text); margin-top:8px; line-height:1.5;}
   .link-status a{color:var(--teal); font-weight:700; text-decoration:none;}
   .link-status a:hover{text-decoration:underline;}
@@ -320,6 +327,31 @@
           <div><label>Event Date</label><input type="date" id="fEventDate"></div>
           <div><label>Headcount</label><input type="number" id="fHeadcount" min="0" placeholder="Est. attendees"></div>
           <div><label>Budget Discussed</label><input type="text" id="fBudget" placeholder="e.g. $15k&ndash;20k"></div>
+          <div>
+            <label>Type of Job</label>
+            <select id="fJobType" onchange="onJobTypeChange()">
+              <option value="">— Select —</option>
+              <option value="Interactive">Interactive</option>
+              <option value="Video">Video</option>
+            </select>
+          </div>
+        </div>
+        <div id="jobTypeExtra" style="display:none; margin-top:14px;">
+          <div style="margin-bottom:14px;">
+            <label>Labels</label>
+            <div class="card-sub" style="margin:-2px 0 8px;">From the linked board's label set (or NMR's default set if none is linked yet).</div>
+            <div id="labelPicker" class="pill-picker"></div>
+          </div>
+          <div class="grid grid-2">
+            <div>
+              <label>Team Members</label>
+              <div id="memberPicker" class="pill-picker"></div>
+            </div>
+            <div>
+              <label>Salesperson</label>
+              <select id="fSalesperson"><option value="">— None —</option></select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -353,7 +385,7 @@
         <div class="card-title">Related</div>
         <div class="card-sub">Optional — connect this meeting to an existing board or estimate.</div>
         <div class="grid grid-2">
-          <div><label>Linked Project Board</label><select id="fLinkedBoard"><option value="">— None —</option></select></div>
+          <div><label>Linked Project Board</label><select id="fLinkedBoard" onchange="onLinkedBoardChange()"><option value="">— None —</option></select></div>
           <div><label>Linked Estimate</label><select id="fLinkedEstimate"><option value="">— None —</option></select></div>
         </div>
       </div>
@@ -480,6 +512,8 @@ function showConfigBanner(){
 let meetings = [];
 let boardsCache = [];
 let estimatesCache = [];
+let membersCache = [];
+let salespeopleCache = [];
 
 function uid(){ return 'mt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
@@ -493,7 +527,8 @@ function blankMeeting(){
     eventType:'', eventDate:'', headcount:'', budget:'',
     servicesDiscussed:'', notes:'', nextSteps:'',
     checklist:[], archived:false,
-    linkedBoardId:'', linkedEstimateId:''
+    linkedBoardId:'', linkedEstimateId:'',
+    jobType:'', labelIds:[], memberIds:[], salespersonId:''
   };
 }
 let state = blankMeeting();
@@ -531,10 +566,12 @@ async function loadAll(){
   if(!isConfigured()){ showConfigBanner(); render(); return; }
   try{
     setLoading(true);
-    const [meetingsSnap, boardsSnap, estimatesSnap] = await Promise.all([
+    const [meetingsSnap, boardsSnap, estimatesSnap, membersSnap, salespeopleDoc] = await Promise.all([
       db.collection('meetings').get(),
       db.collection('boards').get(),
-      db.collection('estimates').get()
+      db.collection('estimates').get(),
+      db.collection('members').get(),
+      db.collection('settings').doc('salespeople').get()
     ]);
     meetings = meetingsSnap.docs.map(d=>({id:d.id, ...d.data()}));
     meetings.sort((a,b)=> (b.savedAt||"").localeCompare(a.savedAt||""));
@@ -542,6 +579,10 @@ async function loadAll(){
     boardsCache.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
     estimatesCache = estimatesSnap.docs.map(d=>({id:d.id, ...d.data()}));
     estimatesCache.sort((a,b)=> (a.meta?.project||"").localeCompare(b.meta?.project||""));
+    membersCache = membersSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    membersCache.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+    salespeopleCache = (salespeopleDoc.exists ? (salespeopleDoc.data().options || []) : []).slice();
+    salespeopleCache.sort((a,b)=> (a.label||"").localeCompare(b.label||""));
   }catch(e){
     showToast("Couldn't reach Firebase — check your connection and reload");
     console.error(e);
@@ -549,6 +590,7 @@ async function loadAll(){
     setLoading(false);
   }
   populateLinkDropdowns();
+  populateSalespersonDropdown();
   render();
 }
 function setLoading(isLoading){
@@ -580,6 +622,11 @@ function renderForm(){
   document.getElementById('fNextSteps').innerHTML = state.nextSteps || '';
   document.getElementById('fLinkedBoard').value = state.linkedBoardId || '';
   document.getElementById('fLinkedEstimate').value = state.linkedEstimateId || '';
+  document.getElementById('fJobType').value = state.jobType || '';
+  document.getElementById('fSalesperson').value = state.salespersonId || '';
+  updateJobTypeExtraVisibility();
+  renderLabelPicker();
+  renderMemberPicker();
   renderChecklist();
   renderConvertStatus();
 }
@@ -599,6 +646,8 @@ function readForm(){
   state.nextSteps = document.getElementById('fNextSteps').innerHTML;
   state.linkedBoardId = document.getElementById('fLinkedBoard').value;
   state.linkedEstimateId = document.getElementById('fLinkedEstimate').value;
+  state.jobType = document.getElementById('fJobType').value;
+  state.salespersonId = document.getElementById('fSalesperson').value;
 }
 
 /* ---------------- Checklist ---------------- */
@@ -670,6 +719,66 @@ function populateLinkDropdowns(){
   estSel.innerHTML = '<option value="">— None —</option>' +
     estimatesCache.map(e=>`<option value="${e.id}">${escHtml(e.meta?.project||'Untitled Estimate')}${e.meta?.client ? ' — '+escHtml(e.meta.client) : ''}</option>`).join('');
   estSel.value = curEst;
+}
+function populateSalespersonDropdown(){
+  const sel = document.getElementById('fSalesperson');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— None —</option>' +
+    salespeopleCache.map(s=>`<option value="${s.id}">${escHtml(s.label||'')}</option>`).join('');
+  sel.value = cur;
+}
+function onLinkedBoardChange(){
+  state.linkedBoardId = document.getElementById('fLinkedBoard').value;
+  const validIds = boardLabelsFor(state.linkedBoardId).map(l=>l.id);
+  state.labelIds = (state.labelIds||[]).filter(id=>validIds.includes(id));
+  renderLabelPicker();
+  renderConvertStatus();
+}
+function onJobTypeChange(){
+  state.jobType = document.getElementById('fJobType').value;
+  updateJobTypeExtraVisibility();
+  renderLabelPicker();
+  renderMemberPicker();
+}
+function updateJobTypeExtraVisibility(){
+  const wrap = document.getElementById('jobTypeExtra');
+  if(wrap) wrap.style.display = state.jobType ? 'block' : 'none';
+}
+
+/* Labels live per-board (see boardLabelsFor / DEFAULT_LABELS below); a board
+   that hasn't customized its set falls back to NMR's shared default, same
+   fallback the Project Planner itself uses. */
+function renderLabelPicker(){
+  const wrap = document.getElementById('labelPicker');
+  if(!wrap) return;
+  const labels = boardLabelsFor(state.linkedBoardId);
+  wrap.innerHTML = labels.map(l=>{
+    const on = (state.labelIds||[]).includes(l.id);
+    return `<button type="button" class="label-pill${on ? ' selected' : ''}" style="background:${escAttr(l.color||'#dedede')}" onclick="toggleLabel('${l.id}')">${escHtml(l.name||'Unnamed')}</button>`;
+  }).join('');
+}
+function toggleLabel(id){
+  state.labelIds = state.labelIds || [];
+  const i = state.labelIds.indexOf(id);
+  if(i >= 0) state.labelIds.splice(i,1); else state.labelIds.push(id);
+  renderLabelPicker();
+}
+function renderMemberPicker(){
+  const wrap = document.getElementById('memberPicker');
+  if(!wrap) return;
+  if(!membersCache.length){ wrap.innerHTML = `<div class="check-empty">No team members on the roster yet.</div>`; return; }
+  wrap.innerHTML = membersCache.map(m=>{
+    const on = (state.memberIds||[]).includes(m.id);
+    const initials = m.initials || (m.name||'?').slice(0,2).toUpperCase();
+    return `<button type="button" class="member-pill${on ? ' selected' : ''}" onclick="toggleMember('${m.id}')"><span class="pill-avatar">${escHtml(initials)}</span>${escHtml(m.name||'')}</button>`;
+  }).join('');
+}
+function toggleMember(id){
+  state.memberIds = state.memberIds || [];
+  const i = state.memberIds.indexOf(id);
+  if(i >= 0) state.memberIds.splice(i,1); else state.memberIds.push(id);
+  renderMemberPicker();
 }
 function newMeeting(){
   state = blankMeeting();
@@ -833,6 +942,17 @@ const DEFAULT_LABELS = [
   {id:'lb_programming', name:'Programming',   color:'#dedede'}
 ];
 
+/* Mirrors the Project Planner's boardLabels() — a board's own `labels` array
+   wins once it has real (named) entries, otherwise fall back to the shared
+   default set so a not-yet-linked or not-yet-customized board still shows
+   something to pick from. */
+function boardLabelsFor(boardId){
+  const b = boardsCache.find(x=>x.id === boardId);
+  if(!b || !Array.isArray(b.labels) || !b.labels.length) return DEFAULT_LABELS;
+  if(b.labels.every(l=>!(l.name||'').trim())) return DEFAULT_LABELS;
+  return b.labels;
+}
+
 /* Rich-text fields are stored as HTML; anywhere that text needs to leave
    this app (a card description, an estimate's description) gets plain text
    instead, so raw markup never leaks into a field another app renders
@@ -904,9 +1024,11 @@ async function createProjectCardFromMeeting(){
       title: state.clientName + (state.eventType ? ' — ' + state.eventType : ''),
       pos: maxPosOf(existingCards) + 1000,
       desc: meetingSummaryText(false),
-      labelIds:[], memberIds:[], startDate: state.eventDate || '', dueDate:'',
+      labelIds: state.labelIds || [], memberIds: state.memberIds || [],
+      startDate: state.eventDate || '', dueDate:'',
       checklist: (state.checklist||[]).map(item=>({id:item.id, text:item.text, done:!!item.done, due:''})),
       attachments:[], comments:[],
+      fields: state.salespersonId ? {cf_sales: state.salespersonId} : {},
       createdAt: new Date().toISOString()
     });
     await db.collection('boards').doc(boardId).update({updatedAt: new Date().toISOString()});
