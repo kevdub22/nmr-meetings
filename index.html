@@ -154,6 +154,10 @@
   .check-item.done .check-text{color:var(--gray-text); text-decoration:line-through;}
   .check-item .check-remove{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;}
   .check-item .check-remove:hover{color:var(--red);}
+  .check-item .check-due{font-size:12px; color:var(--gray-text); border:1px solid var(--gray-border); border-radius:4px; padding:2px 4px; flex-shrink:0; width:126px;}
+  .check-item .check-move{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:12px; padding:0 1px; flex-shrink:0; line-height:1;}
+  .check-item .check-move:hover:not(:disabled){color:var(--teal);}
+  .check-item .check-move:disabled{opacity:.25; cursor:default;}
   .check-add{display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid var(--gray-border);}
   .check-add input{flex:1;}
   .check-empty{font-size:12.5px; color:var(--gray-text); padding:4px 0;}
@@ -259,6 +263,68 @@
     #logSearch{width:100% !important;}
     input[type=text], input[type=number], input[type=date], input[type=email], input[type=tel], select, textarea{font-size:16px;}
   }
+
+  /* ---- Meeting PDF (styled to match the Digital Estimates invoice) ---- */
+  @media print{
+    .app, .toast{display:none !important;}
+    #printDoc, #printDoc *{
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    #printDoc{
+      display:block !important;
+      width:100%;
+      background:#fff;
+    }
+    body{background:#fff;}
+    @page{margin:0.35in 0.35in 0.15in 0.35in;}
+  }
+  #printDoc{display:none;}
+  .inv-wrap{
+    font-family: var(--font);
+    color:#1c2431;
+    padding:0;
+    max-width:920px;
+    margin:0 auto;
+    letter-spacing:0.00001px;
+  }
+  .inv-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:26px;}
+  .inv-logo{width:180px; height:auto;}
+  .inv-doc-title{text-align:right;}
+  .inv-doc-title h1{
+    margin:0; font-size:24px; color:var(--navy); letter-spacing:1.5px; white-space:nowrap;
+    font-family:'Instrument Sans', var(--font); text-transform:uppercase;
+  }
+  .inv-doc-title .inv-num{font-size:14px; color:var(--gray-text); margin-top:6px;}
+  .inv-meta{
+    display:grid; grid-template-columns:1fr 1fr; gap:6px 40px; margin-bottom:20px;
+    font-size:13px; border:2px solid var(--navy); border-radius:var(--radius); padding:20px 24px;
+  }
+  .inv-meta-block .inv-label{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--gray-text);
+    font-weight:700; margin-bottom:3px;
+  }
+  .inv-meta-block .inv-val{font-size:14px; color:#1c2431; margin-bottom:16px;}
+  .inv-meta-block .inv-val:last-child{margin-bottom:0;}
+  .inv-section-title{
+    background:var(--navy); color:#fff; font-size:11.5px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.5px; padding:9px 12px; margin-top:24px;
+  }
+  .inv-rich{font-size:13px; line-height:1.6; color:#1c2431; padding:12px; white-space:normal;}
+  .inv-rich p{margin:0 0 8px 0;}
+  .inv-rich p:last-child{margin-bottom:0;}
+  .inv-rich ul, .inv-rich ol{margin:0 0 8px 20px; padding:0;}
+  .inv-rich li{margin-bottom:4px;}
+  table.inv-check-table{width:100%; border-collapse:collapse;}
+  table.inv-check-table td{
+    padding:9px 12px; border-bottom:1px solid var(--gray-border); font-size:13px; vertical-align:top;
+  }
+  table.inv-check-table td.inv-check-mark{width:22px; font-size:14px; color:var(--teal);}
+  table.inv-check-table tr.done td.inv-check-text{color:var(--gray-text); text-decoration:line-through;}
+  table.inv-check-table td.inv-check-due{text-align:right; white-space:nowrap; color:var(--gray-text); font-size:12px;}
+  table.inv-check-table tr, .inv-meta, .inv-section-title{
+    break-inside:avoid; page-break-inside:avoid;
+  }
 </style>
 </head>
 <body>
@@ -328,6 +394,7 @@
         </div>
         <div class="toolbar-actions">
           <button class="btn btn-ghost" onclick="newMeeting()">＋ New</button>
+          <button class="btn btn-ghost" id="exportPdfBtn" onclick="exportMeetingPdf()">Export PDF</button>
           <button class="btn btn-primary" onclick="saveMeeting()">Save Meeting</button>
         </div>
       </div>
@@ -337,13 +404,12 @@
         <div class="grid grid-3">
           <div><label>Meeting Date</label><input type="date" id="fMeetingDate"></div>
           <div><label>Taken By</label><input type="text" id="fTakenBy" placeholder="Your name"></div>
-          <div><label>Client / Company</label><input type="text" id="fClientName" placeholder="Client or company name"></div>
+          <div><label>Client / Company</label><input type="text" id="fClientName" placeholder="Client or company name" oninput="state.clientName = this.value.trim(); updateFormTitle();"></div>
           <div><label>Contact Name</label><input type="text" id="fContactName" placeholder="Who you spoke with"></div>
           <div><label>Contact Email</label><input type="email" id="fContactEmail" placeholder="name@company.com"></div>
           <div><label>Contact Phone</label><input type="tel" id="fContactPhone" placeholder="(555) 555-5555"></div>
-          <div><label>Project Code</label><input type="text" id="fProjectCode" placeholder="e.g. ASH26"></div>
+          <div><label>Project Code</label><input type="text" id="fProjectCode" placeholder="e.g. ASH26" oninput="state.projectCode = this.value.trim(); updateFormTitle();"></div>
           <div><label>Event Date</label><input type="date" id="fEventDate"></div>
-          <div><label>Headcount</label><input type="number" id="fHeadcount" min="0" placeholder="Est. attendees"></div>
           <div><label>Budget Discussed</label><input type="text" id="fBudget" placeholder="e.g. $15k&ndash;20k"></div>
           <div>
             <label>Type of Job</label>
@@ -509,9 +575,13 @@
   </div>
 </div>
 
+<div id="printDoc"><div class="inv-wrap" id="printDocContent"></div></div>
+
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
 /* ================= CONFIG =================
@@ -559,7 +629,7 @@ function blankMeeting(){
     id, savedAt: null,
     meetingDate: today, takenBy: '',
     clientName:'', contactName:'', contactEmail:'', contactPhone:'',
-    projectCode:'', eventDate:'', headcount:'', budget:'',
+    projectCode:'', eventDate:'', budget:'',
     servicesDiscussed:'', notes:'', nextSteps:'',
     checklist:[], archived:false,
     linkedBoardId:'', linkedEstimateId:'',
@@ -641,8 +711,12 @@ function render(){
 }
 
 /* ---------------- Form view ---------------- */
+function updateFormTitle(){
+  const label = [state.clientName, state.projectCode].filter(Boolean).join(' — ');
+  document.getElementById('formTitle').textContent = label || (state.savedAt ? 'Edit Meeting' : 'New Meeting');
+}
 function renderForm(){
-  document.getElementById('formTitle').textContent = state.savedAt ? 'Edit Meeting' : 'New Meeting';
+  updateFormTitle();
   document.getElementById('fMeetingDate').value = state.meetingDate || '';
   document.getElementById('fTakenBy').value = state.takenBy || '';
   document.getElementById('fClientName').value = state.clientName || '';
@@ -651,7 +725,6 @@ function renderForm(){
   document.getElementById('fContactPhone').value = state.contactPhone || '';
   document.getElementById('fProjectCode').value = state.projectCode || '';
   document.getElementById('fEventDate').value = state.eventDate || '';
-  document.getElementById('fHeadcount').value = state.headcount || '';
   document.getElementById('fBudget').value = state.budget || '';
   document.getElementById('fServicesDiscussed').innerHTML = state.servicesDiscussed || '';
   document.getElementById('fNotes').innerHTML = state.notes || '';
@@ -675,7 +748,6 @@ function readForm(){
   state.contactPhone = document.getElementById('fContactPhone').value.trim();
   state.projectCode = document.getElementById('fProjectCode').value.trim();
   state.eventDate = document.getElementById('fEventDate').value;
-  state.headcount = document.getElementById('fHeadcount').value;
   state.budget = document.getElementById('fBudget').value.trim();
   state.servicesDiscussed = document.getElementById('fServicesDiscussed').innerHTML;
   state.notes = document.getElementById('fNotes').innerHTML;
@@ -695,10 +767,13 @@ function renderChecklist(){
     wrap.innerHTML = `<div class="check-empty">No checklist items yet.</div>`;
     return;
   }
-  wrap.innerHTML = items.map(item => `
+  wrap.innerHTML = items.map((item, i) => `
     <div class="check-item${item.done ? ' done' : ''}">
       <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}')">
       <span class="check-text">${escHtml(item.text)}</span>
+      <input type="date" class="check-due" value="${item.due || ''}" onchange="setChecklistItemDue('${item.id}', this.value)">
+      <button type="button" class="check-move" onclick="moveChecklistItem('${item.id}', -1)" ${i===0 ? 'disabled' : ''}>▲</button>
+      <button type="button" class="check-move" onclick="moveChecklistItem('${item.id}', 1)" ${i===items.length-1 ? 'disabled' : ''}>▼</button>
       <button type="button" class="check-remove" onclick="removeChecklistItem('${item.id}')">✕</button>
     </div>`).join('');
 }
@@ -707,7 +782,7 @@ function addChecklistItem(){
   const text = (input.value || '').trim();
   if(!text) return;
   state.checklist = state.checklist || [];
-  state.checklist.push({id: uid(), text, done:false});
+  state.checklist.push({id: uid(), text, done:false, due:''});
   input.value = '';
   renderChecklist();
 }
@@ -715,6 +790,19 @@ function toggleChecklistItem(id){
   const item = (state.checklist||[]).find(i=>i.id === id);
   if(!item) return;
   item.done = !item.done;
+  renderChecklist();
+}
+function setChecklistItemDue(id, due){
+  const item = (state.checklist||[]).find(i=>i.id === id);
+  if(!item) return;
+  item.due = due;
+}
+function moveChecklistItem(id, delta){
+  const list = state.checklist || [];
+  const i = list.findIndex(item=>item.id === id);
+  const j = i + delta;
+  if(i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
   renderChecklist();
 }
 function removeChecklistItem(id){
@@ -1130,7 +1218,6 @@ function meetingSummaryText(includeChecklist){
   const lines = [];
   if(state.contactName) lines.push(`Contact: ${state.contactName}${state.contactEmail ? ' · '+state.contactEmail : ''}${state.contactPhone ? ' · '+state.contactPhone : ''}`);
   if(state.eventDate) lines.push(`Event date: ${state.eventDate}`);
-  if(state.headcount) lines.push(`Headcount: ${state.headcount}`);
   if(state.budget) lines.push(`Budget discussed: ${state.budget}`);
   const services = htmlToText(state.servicesDiscussed);
   if(services) lines.push(`\nServices discussed:\n${services}`);
@@ -1139,9 +1226,178 @@ function meetingSummaryText(includeChecklist){
   const nextSteps = htmlToText(state.nextSteps);
   if(nextSteps) lines.push(`\nNext steps:\n${nextSteps}`);
   if(includeChecklist && (state.checklist||[]).length){
-    lines.push(`\nChecklist:\n` + state.checklist.map(i=> `${i.done?'[x]':'[ ]'} ${i.text}`).join('\n'));
+    lines.push(`\nChecklist:\n` + state.checklist.map(i=> `${i.done?'[x]':'[ ]'} ${i.text}${i.due ? ' (due '+i.due+')' : ''}`).join('\n'));
   }
   return lines.join('\n');
+}
+
+/* ---------------- PDF export ----------------
+   Mirrors the Digital Estimates invoice: same logo treatment, .inv-* layout
+   classes, and the html2canvas + jsPDF pagination approach (a real <canvas>
+   capture rather than window.print, so the output is identical regardless
+   of the browser's print settings). */
+function fmtDate(str){
+  if(!str) return '';
+  return new Date(str + 'T00:00:00').toLocaleDateString();
+}
+function svgToPngDataUrl(svgMarkup, width, height){
+  return new Promise((resolve, reject)=>{
+    const svg64 = btoa(unescape(encodeURIComponent(svgMarkup)));
+    const img = new Image();
+    img.onload = function(){
+      const canvas = document.createElement('canvas');
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = 'data:image/svg+xml;base64,' + svg64;
+  });
+}
+async function exportMeetingPdf(){
+  const metaFields = [
+    {label:'Client',           value: state.clientName},
+    {label:'Contact',          value: [state.contactName, state.contactEmail, state.contactPhone].filter(Boolean).join(' · ')},
+    {label:'Project Code',     value: state.projectCode},
+    {label:'Job Type',         value: state.jobType},
+    {label:'Meeting Date',     value: fmtDate(state.meetingDate)},
+    {label:'Event Date',       value: fmtDate(state.eventDate)},
+    {label:'Taken By',         value: state.takenBy},
+    {label:'Budget Discussed', value: state.budget}
+  ];
+  const half = Math.ceil(metaFields.length / 2);
+  const metaBlock = items => `<div class="inv-meta-block">${items.map(x => `<div class="inv-label">${escHtml(x.label)}</div><div class="inv-val">${escHtml(x.value || "—")}</div>`).join('')}</div>`;
+  const metaHtml = `<div class="inv-meta">${metaBlock(metaFields.slice(0, half))}${metaBlock(metaFields.slice(half))}</div>`;
+
+  const richSection = (title, html) => {
+    const text = htmlToText(html);
+    if(!text) return '';
+    return `<div class="inv-section-title">${escHtml(title)}</div><div class="inv-rich">${html}</div>`;
+  };
+
+  const checklistItems = state.checklist || [];
+  const checklistHtml = checklistItems.length ? `
+    <div class="inv-section-title">Checklist</div>
+    <table class="inv-check-table">${checklistItems.map(item => `
+      <tr class="${item.done ? 'done' : ''}">
+        <td class="inv-check-mark">${item.done ? '☑' : '☐'}</td>
+        <td class="inv-check-text">${escHtml(item.text)}</td>
+        <td class="inv-check-due">${item.due ? 'Due ' + fmtDate(item.due) : ''}</td>
+      </tr>`).join('')}</table>` : '';
+
+  const logoSvgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 301.05 177">
+    <g><path fill="#1c315e" d="M123.17,90.27V31.48h-24.18v46.19c7.56,4.67,15.72,8.85,24.18,12.6Z"/><path fill="#1c315e" d="M96,75.78l-10.37-44.29h-27.91v1.12c6.59,17.54,20.62,31.74,38.26,43.16h.02Z"/><path fill="#1c315e" d="M85.36,82.45l10.3,40.83h27.52v-25.11c-14.76-4.89-27.24-10.2-37.82-15.73v.02h0Z"/><path fill="#1c315e" d="M57.74,64.47v58.81h23.4v-43.11c-9.31-5.16-17.01-10.44-23.4-15.7Z"/></g>
+    <g><path fill="#1c315e" d="M154.79,102.12v-45.7h.26l8.16,48.25c8.1,2.35,16.11,4.41,23.77,6.18l9.21-54.42h.26v56.51c8.82,1.86,17.01,3.32,24.16,4.48V31.49h-36.51l-8.36,56.19h-.26l-7.59-56.19h-37.29v61.96c7.93,3.24,16.07,6.11,24.18,8.67h.02-.01Z"/><path fill="#1c315e" d="M130.63,100.54v22.75h24.18v-16.23c-8.62-2.04-16.67-4.22-24.18-6.52Z"/><path fill="#1c315e" d="M163.97,109.14l2.38,14.15h18.51l1.67-9.81c-7.9-1.35-15.43-2.79-22.56-4.34Z"/><path fill="#1c315e" d="M196.46,115.1v8.19h24.16v-4.94c-8.41-.99-16.47-2.08-24.16-3.25Z"/></g>
+    <path fill="#1c315e" d="M292.49,119.3c-.65-1.28-1.16-5.65-1.16-10.8v-7.58c0-5.4-.14-11.58-2.43-15.68-2.43-4.38-7.08-6.95-12.21-7.32v-.26c9.01-1.29,15.31-7.46,15.31-22.12s-7.58-24.04-25.34-24.04h-38.57v87.08c12.86,1.89,20.94,2.57,20.94,2.57-7.22-.58-14.18-1.23-20.94-1.96v4.1h25.71v-36.13h4.75c4.5,0,7.07,1.41,7.07,9.26,0,4.51.39,9.13.39,13.64s.26,11.19,1.92,13.25h27.26v-1.28c-1.16-.51-2.06-1.41-2.69-2.71l-.02-.03h0ZM257.52,70.2h-3.73v-20.19h2.96c5.79,0,9.52,1.8,9.52,9.38,0,8.87-4.5,10.8-8.73,10.8l-.02.02h0Z"/>
+    <path fill="#44b1ca" d="M30.53,9H3.95S-4.53,100.54,225.88,119.1c0,0-193.89-16.48-195.37-110.1,0,0,.02,0,.02,0Z"/>
+    <g><path fill="#44b1ca" d="M57.41,130.95h32.3v5.18h-26.34v11.65h25.56v5.18h-25.56v12.99h26.9v5.18h-32.86v-40.18.02-.02Z"/><path fill="#44b1ca" d="M127.53,130.95h6.42l-17.62,40.18h-6.37l-17.9-40.18h6.76l14.46,33.99,14.23-33.99h.02Z"/><path fill="#44b1ca" d="M137.66,130.95h32.3v5.18h-26.34v11.65h25.56v5.18h-25.56v12.99h26.9v5.18h-32.86v-40.18.02-.02Z"/><path fill="#44b1ca" d="M183.58,139.17h-.12v31.96h-5.96v-40.18h6.91l25.83,31.96h.12v-31.96h5.96v40.18h-6.91l-25.83-31.96h0Z"/><path fill="#44b1ca" d="M236.16,136.14h-15.21v-5.18h36.35v5.18h-15.19v35.01h-5.96v-35.01h.01Z"/><path fill="#44b1ca" d="M264.24,157.92c.12,7.2,6.86,9.06,12.94,9.06s10.86-2.42,10.86-6.81c0-3.66-2.88-5.18-7.49-5.96l-9.13-1.52c-4.78-.78-11.94-2.71-11.94-10.52,0-7.32,5.79-12.21,16.09-12.21,8.05,0,16.55,2.93,17.11,12.6h-5.98c-.51-3.15-2.3-7.42-11.94-7.42-4.39,0-9.35,1.86-9.35,6.59,0,2.47,1.63,4.44,6.59,5.3l9.86,1.69c3.15.56,12.11,2.08,12.11,10.3,0,10.25-9.18,13.16-17.28,13.16-9.06,0-18.46-3.15-18.46-14.23h5.96l.03-.02h.02Z"/></g>
+  </svg>`;
+  const logoPngUrl = await svgToPngDataUrl(logoSvgMarkup, 180, 106);
+  const logoImg = `<img class="inv-logo" src="${logoPngUrl}" alt="NMR Events">`;
+
+  const titleLine = [state.clientName, state.projectCode].filter(Boolean).join(' — ');
+
+  const html = `
+    <div class="inv-header">
+      ${logoImg}
+      <div class="inv-doc-title">
+        <h1>Meeting Notes</h1>
+        <div class="inv-num">${escHtml(titleLine || fmtDate(state.meetingDate) || '—')}</div>
+      </div>
+    </div>
+    ${metaHtml}
+    ${richSection('Services Discussed', state.servicesDiscussed)}
+    ${richSection('Notes', state.notes)}
+    ${richSection('Next Steps', state.nextSteps)}
+    ${checklistHtml}
+  `;
+  document.getElementById('printDocContent').innerHTML = html;
+  await downloadMeetingPdf();
+}
+async function downloadMeetingPdf(){
+  const wrap = document.getElementById('printDoc');
+  const content = document.getElementById('printDocContent');
+  const rawName = [state.clientName, state.projectCode].filter(Boolean).join(' - ') || 'meeting';
+  const cleanName = rawName.replace(/[\/\\:*?"<>|\x00-\x1f]+/g, '').replace(/\s+/g, ' ').replace(/^\.+/, '').trim();
+  const filename = (cleanName || 'meeting') + '.pdf';
+  const exportBtn = document.getElementById('exportPdfBtn');
+
+  const MARGIN_TOP_IN = 0.35, MARGIN_BOTTOM_IN = 0.15, MARGIN_SIDE_IN = 0.35;
+  const PAGE_WIDTH_IN = 8.5, PAGE_HEIGHT_IN = 11;
+  const CSS_PX_PER_IN = 96, SCALE = 2;
+  const CONTENT_WIDTH = (PAGE_WIDTH_IN - MARGIN_SIDE_IN * 2) * CSS_PX_PER_IN;
+  const pageContentHeightPx = (PAGE_HEIGHT_IN - MARGIN_TOP_IN - MARGIN_BOTTOM_IN) * CSS_PX_PER_IN;
+
+  wrap.style.cssText = `display:block; position:fixed; top:0; left:0; width:${CONTENT_WIDTH}px; background:#fff; z-index:-1;`;
+  if(exportBtn){ exportBtn.disabled = true; exportBtn.textContent = 'Preparing…'; }
+  if(document.fonts && document.fonts.ready){ await document.fonts.ready; }
+
+  try{
+    content.querySelectorAll('.inv-meta, .inv-section-title, table.inv-check-table tr').forEach(el=>{
+      const contentTop = content.getBoundingClientRect().top;
+      const rect = el.getBoundingClientRect();
+      const top = rect.top - contentTop;
+      const bottom = top + rect.height;
+      const topPage = Math.floor(top / pageContentHeightPx);
+      const bottomPage = Math.floor((bottom - 1) / pageContentHeightPx);
+      if(topPage !== bottomPage && rect.height <= pageContentHeightPx){
+        const spacerHeight = (topPage + 1) * pageContentHeightPx - top;
+        if(spacerHeight > 0){
+          let spacer;
+          if(el.tagName === 'TR'){
+            spacer = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 3;
+            td.style.cssText = `height:${spacerHeight}px; padding:0; border:none;`;
+            spacer.appendChild(td);
+          } else {
+            spacer = document.createElement('div');
+            spacer.style.height = spacerHeight + 'px';
+          }
+          el.parentNode.insertBefore(spacer, el);
+        }
+      }
+    });
+
+    const contentHeight = content.scrollHeight;
+    const canvas = await html2canvas(content, {
+      scale: SCALE,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      width: CONTENT_WIDTH,
+      height: contentHeight,
+      windowWidth: CONTENT_WIDTH,
+      windowHeight: contentHeight,
+      x: 0, y: 0, scrollX: 0, scrollY: 0
+    });
+
+    const pagePx = Math.round(pageContentHeightPx * SCALE);
+    const numPages = Math.max(1, Math.ceil(canvas.height / pagePx));
+    const pdf = new jspdf.jsPDF({unit:'in', format:'letter', orientation:'portrait'});
+    for(let k=0; k<numPages; k++){
+      const sliceH = Math.min(pagePx, canvas.height - k*pagePx);
+      const tmp = document.createElement('canvas');
+      tmp.width = canvas.width;
+      tmp.height = sliceH;
+      const ctx = tmp.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tmp.width, tmp.height);
+      ctx.drawImage(canvas, 0, k*pagePx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      if(k > 0) pdf.addPage();
+      pdf.addImage(tmp.toDataURL('image/jpeg', 0.98), 'JPEG',
+        MARGIN_SIDE_IN, MARGIN_TOP_IN,
+        PAGE_WIDTH_IN - MARGIN_SIDE_IN*2, sliceH / (SCALE * CSS_PX_PER_IN));
+    }
+    pdf.save(filename);
+  }catch(err){
+    console.error(err);
+    showToast("Couldn't generate PDF");
+  }finally{
+    wrap.style.cssText = '';
+    if(exportBtn){ exportBtn.disabled = false; exportBtn.textContent = 'Export PDF'; }
+  }
 }
 
 const PROJECT_CARD_LIST_NAME = 'Potential';
@@ -1188,7 +1444,7 @@ async function createProjectCardFromMeeting(){
       desc: meetingSummaryText(false),
       labelIds: state.labelIds || [], memberIds: state.memberIds || [],
       startDate: state.eventDate || '', dueDate:'',
-      checklist: (state.checklist||[]).map(item=>({id:item.id, text:item.text, done:!!item.done, due:''})),
+      checklist: (state.checklist||[]).map(item=>({id:item.id, text:item.text, done:!!item.done, due:item.due||''})),
       attachments:[], comments:[],
       fields: state.salespersonId ? {cf_sales: state.salespersonId} : {},
       createdAt: new Date().toISOString()
