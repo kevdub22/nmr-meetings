@@ -60,6 +60,8 @@
   }
   .nav-item:hover{background:rgba(255,255,255,0.05); color:var(--white);}
   .nav-item.active{background:rgba(71,178,204,0.14); border-left:3px solid var(--teal); color:var(--white);}
+  .nav-item.nav-download{display:flex; align-items:center; gap:9px;}
+  .nav-item.nav-download svg{flex-shrink:0;}
   .nav-count{float:right; background:rgba(255,255,255,0.15); border-radius:10px; padding:1px 7px; font-size:11px; font-weight:700;}
   .sidebar-footer{padding:16px 20px; font-size:11px; color:rgba(255,255,255,0.4);}
   .nav-links{display:flex; flex-direction:column; flex:1;}
@@ -154,6 +156,7 @@
   .badge{display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; padding:2px 7px; border-radius:20px; margin-left:8px; vertical-align:middle;}
   .badge-linked{background:#e7f1fb; color:var(--navy);}
   .badge-archived{background:#eceff3; color:var(--gray-text);}
+  .badge-presence{background:#fdf0d5; color:#8a6100;}
 
   .check-item{display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid var(--gray-border);}
   .check-item:last-of-type{border-bottom:none;}
@@ -375,6 +378,15 @@
       <span class="hamburger-line"></span>
     </button>
     <nav class="nav-links" id="navLinks">
+      <a class="nav-item nav-download" href="files/Daily%20Planner.pdf" download="Daily Planner.pdf" title="Download Daily Planner">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        Daily Planner
+      </a>
       <div class="nav-item active" data-view="form">New Meeting</div>
       <div class="nav-item" data-view="log">Meeting Log <span class="nav-count" id="logCount">0</span></div>
       <a class="nav-item" href="https://nmrestimates.netlify.app" target="_blank" rel="noopener">Estimates ↗</a>
@@ -630,6 +642,16 @@ let boardsCache = [];
 let estimatesCache = [];
 let membersCache = [];
 let salespeopleCache = [];
+let currentMeetingId = null;
+// Presence: who else has a meeting open right now, mirroring the Estimate
+// Builder's advisory-only heartbeat. Both apps share the same Firebase
+// project, so this deliberately writes to the same top-level `presence`
+// collection — docs carry a `meetingId` field instead of `estimateId`, so
+// each app's listener naturally ignores the other's entries.
+const SESSION_ID = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+const PRESENCE_STALE_MS = 60000;
+let presenceByMeeting = {};
+let presenceTimer = null;
 const MEMBER_COLORS = ['#47b2cc','#1e8a5f','#e07b39','#8e6bb8','#c0392b','#17305e','#b8860b','#2e8b8b'];
 
 function uid(){ return 'mt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
@@ -1055,6 +1077,8 @@ function hashCode(s){
 function newMeeting(){
   state = blankMeeting();
   state.takenBy = currentUser ? (currentUser.displayName || nameFromEmail(currentUser.email||'')) : '';
+  currentMeetingId = null;
+  clearPresence();
   switchView('form');
   render();
 }
@@ -1067,6 +1091,8 @@ async function saveMeeting(){
   state.savedAt = new Date().toISOString();
   const idx = meetings.findIndex(m=>m.id === state.id);
   if(idx >= 0) meetings[idx] = {...state}; else meetings.unshift({...state});
+  // Now that it exists for others to open, start broadcasting presence on it.
+  setCurrentMeeting(state.id);
   render();
   if(!isConfigured()){ showToast("Saved locally — connect Firebase to keep this permanently"); showConfigBanner(); return; }
   try{
@@ -1081,8 +1107,11 @@ function loadMeeting(id){
   const rec = meetings.find(m=>m.id === id);
   if(!rec) return;
   state = {...rec};
+  setCurrentMeeting(state.id);
   switchView('form');
   render();
+  const others = otherEditors(rec.id);
+  if(others) showToast("Meeting loaded — someone else has this open");
 }
 async function deleteMeeting(id){
   if(!confirm("Delete this meeting note? This can't be undone.")) return;
@@ -1118,6 +1147,8 @@ function logCardHtml(m){
   if(m.linkedBoardId) linkedBits.push(`<span class="badge badge-linked">Board</span>`);
   if(m.linkedEstimateId) linkedBits.push(`<span class="badge badge-linked">Estimate</span>`);
   if(m.archived) linkedBits.push(`<span class="badge badge-archived">Archived</span>`);
+  const others = otherEditors(m.id);
+  if(others) linkedBits.push(`<span class="badge badge-presence">${others === 1 ? 'Someone else has this open' : `${others} others have this open`}</span>`);
   const archiveBtn = m.archived
     ? `<button class="btn btn-ghost btn-sm" onclick="setArchived('${m.id}', false)">Restore</button>`
     : `<button class="btn btn-ghost btn-sm" onclick="setArchived('${m.id}', true)">Archive</button>`;
@@ -1664,7 +1695,58 @@ async function sendReset(){
   showGateOk(`If an account exists for ${email}, a reset link is on its way.`);
 }
 function signOutNow(){
+  clearPresence();
   auth.signOut().catch(e=>console.error(e));
+}
+
+/* ---------------- Presence ----------------
+   Advisory only: a heartbeat per open meeting lets other people see that
+   someone already has it open. It does not lock anything. */
+function otherEditors(meetingId){
+  const entries = presenceByMeeting[meetingId] || [];
+  const cutoff = Date.now() - PRESENCE_STALE_MS;
+  return entries.filter(p => p.session !== SESSION_ID && p.at >= cutoff).length;
+}
+async function writePresence(){
+  if(!isConfigured() || !currentMeetingId) return;
+  try{
+    await db.collection('presence').doc(SESSION_ID).set({
+      session: SESSION_ID,
+      meetingId: currentMeetingId,
+      at: Date.now()
+    });
+  }catch(e){ /* presence is best-effort; never disrupt the app */ }
+}
+async function clearPresence(){
+  if(!isConfigured()) return;
+  try{ await db.collection('presence').doc(SESSION_ID).delete(); }catch(e){}
+}
+function setCurrentMeeting(id){
+  currentMeetingId = id;
+  writePresence();
+}
+function watchPresence(){
+  if(!isConfigured()) return;
+  db.collection('presence').onSnapshot(snap=>{
+    const next = {};
+    const stale = [];
+    const staleCutoff = Date.now() - PRESENCE_STALE_MS * 5;
+    snap.forEach(doc=>{
+      const d = doc.data();
+      if(!d || !d.meetingId) return;
+      if((d.at || 0) < staleCutoff){ stale.push(doc.id); return; }
+      (next[d.meetingId] = next[d.meetingId] || []).push({session: d.session || doc.id, at: d.at || 0});
+    });
+    presenceByMeeting = next;
+    renderLog();
+    stale.forEach(id=>{ db.collection('presence').doc(id).delete().catch(()=>{}); });
+  }, err=>{ console.error(err); });
+
+  presenceTimer = setInterval(()=>{
+    writePresence();
+    if(Object.keys(presenceByMeeting).length) renderLog();
+  }, 20000);
+  window.addEventListener('pagehide', clearPresence);
 }
 function nameFromEmail(email){
   const local = (email || '').split('@')[0];
@@ -1710,6 +1792,7 @@ auth.onAuthStateChanged(user=>{
 
   upsertMyMember(user).catch(e=>console.error(e));
   loadAll();
+  watchPresence();
 });
 </script>
 </body>
