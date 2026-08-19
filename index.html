@@ -196,6 +196,11 @@
   .roster-add input{flex:1;}
   .roster-remove{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;}
   .roster-remove:hover{color:var(--red);}
+  .roster-role-badge{
+    font-size:11px; font-weight:700; color:var(--gray-text);
+    text-transform:uppercase; letter-spacing:0.3px; flex-shrink:0;
+  }
+  .roster-row select.role-select{width:auto; flex-shrink:0; max-width:110px; font-size:12.5px; padding:5px 8px;}
 
   .link-status{font-size:12.5px; color:var(--gray-text); margin-top:8px; line-height:1.5;}
   .link-status a{color:var(--teal); font-weight:700; text-decoration:none;}
@@ -626,6 +631,13 @@ const ALLOWED_DOMAIN = 'nmrevents.com';
 function isStaffUser(user){
   return !!user && (user.email || '').toLowerCase().endsWith('@' + ALLOWED_DOMAIN);
 }
+
+/* The one account allowed to promote itself to admin with nobody else
+   already holding that role — otherwise nobody could ever become the first
+   admin, since every other path to the role requires an existing admin to
+   grant it. Shared with Planner and Estimates; keep all three in sync. */
+const BOOTSTRAP_ADMIN_EMAIL = 'kwright@nmrevents.com';
+
 function isConfigured(){
   return firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("PASTE_");
 }
@@ -977,6 +989,11 @@ function initialsOf(name){
 }
 function myMemberId(){ return currentUser ? currentUser.uid : ''; }
 function memberById(id){ return membersCache.find(m=>m.id === id); }
+function myMember(){ return memberById(myMemberId()); }
+/* Missing role = 'member' — every account created before roles existed has
+   no role field at all, and treating that as a plain member (rather than
+   backfilling every doc) is the least surprising default. */
+function isAdmin(){ return (myMember()?.role || 'member') === 'admin'; }
 function renderRoster(){
   const wrap = document.getElementById('rosterList');
   if(!wrap) return;
@@ -984,9 +1001,21 @@ function renderRoster(){
     wrap.innerHTML = `<div class="check-empty">Nobody yet — teammates appear here automatically the first time they sign in, or add one below.</div>`;
   } else {
     const me = myMemberId();
+    const admin = isAdmin();
+    const adminCount = membersCache.filter(m=>m.role === 'admin').length;
     wrap.innerHTML = membersCache.map(m=>{
       const isMe = m.id === me;
-      const editable = isMe || m.isPlaceholder;
+      const editable = isMe || m.isPlaceholder || admin;
+      const role = m.role || 'member';
+      // A real account only, and only while another admin still exists —
+      // otherwise a slip here locks the whole workspace out of Settings.
+      const roleEditable = admin && !m.isPlaceholder && (role !== 'admin' || adminCount > 1);
+      const roleControl = m.isPlaceholder ? '' : (roleEditable
+        ? `<select class="role-select" onchange="setMemberRole('${m.id}', this.value)">
+            <option value="member"${role==='member'?' selected':''}>Member</option>
+            <option value="admin"${role==='admin'?' selected':''}>Admin</option>
+          </select>`
+        : `<span class="roster-role-badge">${role==='admin'?'Admin':'Member'}</span>`);
       return `
       <div class="roster-row">
         <span class="avatar" style="background:${escAttr(m.color)};">${escAttr(m.initials)}</span>
@@ -999,6 +1028,7 @@ function renderRoster(){
             ${m.isPlaceholder ? 'Not signed in yet' : escHtml(m.email||'')}${isMe ? ' · you' : ''}
           </div>
         </div>
+        ${roleControl}
         ${isMe ? '' : `<span class="roster-remove" title="Remove member" onclick="removeMember('${m.id}')">✕</span>`}
       </div>`;
     }).join('');
@@ -1009,6 +1039,9 @@ function renderRoster(){
       onkeydown="if(event.key==='Enter') addMember()">
     <button class="btn btn-primary btn-sm" onclick="addMember()">Add</button>`;
 }
+/* A real profile is only editable by the account it belongs to, or by an
+   admin — the rules reject anyone else's write. A placeholder (added by
+   hand, no login yet) is team-owned, so any staff member can fix a typo. */
 function renameMember(id, name){
   name = (name||'').trim();
   const m = memberById(id);
@@ -1018,6 +1051,20 @@ function renameMember(id, name){
     m.name = name; m.initials = initialsOf(name);
     renderMemberPicker();
   }).catch(e=>{ console.error(e); showToast("Couldn't save name"); });
+}
+/* Admin-only — firestore.rules enforces this same restriction server-side,
+   so this is a UI convenience, not the actual security boundary. */
+function setMemberRole(id, role){
+  if(!isAdmin()) return;
+  const m = memberById(id);
+  if(!m) return;
+  db.collection('members').doc(id).update({role}).then(()=>{
+    m.role = role;
+    renderRoster();
+    showToast(`${m.name} is now ${role === 'admin' ? 'an Admin' : 'a Member'}`);
+  }).catch(e=>{
+    console.error(e); showToast("Couldn't change role"); renderRoster();
+  });
 }
 async function addMember(){
   const input = document.getElementById('newMemberName');
@@ -1058,11 +1105,18 @@ async function upsertMyMember(user){
   const ref = db.collection('members').doc(user.uid);
   const snap = await ref.get();
   const payload = {email: user.email || ''};
+  const email = (user.email || '').toLowerCase();
   if(!snap.exists){
     const name = user.displayName || nameFromEmail(user.email || '');
     payload.name = name;
     payload.initials = initialsOf(name);
     payload.color = MEMBER_COLORS[Math.abs(hashCode(user.uid)) % MEMBER_COLORS.length];
+    payload.role = email === BOOTSTRAP_ADMIN_EMAIL ? 'admin' : 'member';
+  } else if(!snap.data().role && email === BOOTSTRAP_ADMIN_EMAIL){
+    // One-time promotion for the account that first set roles up — a doc
+    // created before roles existed has no role field to have carried this
+    // already, and only ever fires for this one address.
+    payload.role = 'admin';
   }
   await ref.set(payload, {merge:true});
 }
