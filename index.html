@@ -94,6 +94,7 @@
   }
   textarea{min-height:72px; resize:vertical; line-height:1.5;}
   input:focus, select:focus, textarea:focus{outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(71,178,204,0.15);}
+  input[type=date]{-webkit-appearance:none; appearance:none; text-align:left; min-height:35px;}
 
   .rte{border:1px solid var(--gray-border); border-radius:5px; overflow:hidden;}
   .rte:focus-within{border-color:var(--teal); box-shadow:0 0 0 3px rgba(71,178,204,0.15);}
@@ -1128,7 +1129,7 @@ function hashCode(s){
 
 function newMeeting(){
   state = blankMeeting();
-  state.takenBy = currentUser ? (currentUser.displayName || nameFromEmail(currentUser.email||'')) : '';
+  state.takenBy = currentUser ? (myMember()?.name || currentUser.displayName || nameFromEmail(currentUser.email||'')) : '';
   currentMeetingId = null;
   clearPresence();
   switchView('form');
