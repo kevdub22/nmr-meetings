@@ -47,10 +47,13 @@
     padding:calc(20px + env(safe-area-inset-top)) 0 20px 0;
     display:flex;
     flex-direction:column;
+    height:100vh;
+    position:sticky;
+    top:0;
   }
   .brand{padding:0 20px 16px 20px; border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:10px;}
   .brand-logo{width:160px; height:auto; display:block;}
-  .brand-caption{margin-top:auto; padding:0 20px 14px 20px;}
+  .brand-caption{padding:0 20px 14px 20px;}
   .brand-line1{font-size:20px; font-weight:800; color:var(--white); letter-spacing:0.6px; text-transform:uppercase;}
   .brand-line2{font-size:11px; color:var(--teal); text-transform:uppercase; letter-spacing:1px; margin-top:3px;}
   .nav-item{
@@ -62,7 +65,8 @@
   .nav-item.active{background:rgba(71,178,204,0.14); border-left:3px solid var(--teal); color:var(--white);}
   .nav-count{float:right; background:rgba(255,255,255,0.15); border-radius:10px; padding:1px 7px; font-size:11px; font-weight:700;}
   .sidebar-footer{padding:16px 20px; font-size:11px; color:rgba(255,255,255,0.4);}
-  .nav-links{display:flex; flex-direction:column; flex:1;}
+  .nav-links{display:flex; flex-direction:column; flex:1; min-height:0;}
+  .nav-scroll{flex:1; min-height:0; overflow-y:auto;}
   .hamburger-btn{
     display:none; flex-direction:column; justify-content:center; align-items:center; gap:5px;
     background:none; border:none; cursor:pointer; padding:8px; width:38px; height:38px;
@@ -258,7 +262,7 @@
       position:fixed; top:0; right:0; height:100%; width:min(78vw, 300px);
       background:var(--navy); flex:none; padding:calc(20px + env(safe-area-inset-top)) 0 20px 0;
       transform:translateX(100%); transition:transform .28s ease; z-index:200;
-      box-shadow:-8px 0 28px rgba(0,0,0,0.28); overflow-y:auto;
+      box-shadow:-8px 0 28px rgba(0,0,0,0.28);
     }
     .nav-links.open{transform:translateX(0);}
     .nav-item{padding:14px 22px; white-space:normal; flex-shrink:0;}
@@ -383,10 +387,12 @@
       <span class="hamburger-line"></span>
     </button>
     <nav class="nav-links" id="navLinks">
-      <div class="nav-item active" data-view="form">New Meeting</div>
-      <div class="nav-item" data-view="log">Meeting Log <span class="nav-count" id="logCount">0</span></div>
-      <a class="nav-item" href="https://nmrestimates.netlify.app" target="_blank" rel="noopener">Estimates ↗</a>
-      <a class="nav-item" href="https://nmrprojects.netlify.app" target="_blank" rel="noopener">Projects ↗</a>
+      <div class="nav-scroll">
+        <div class="nav-item active" data-view="form">New Meeting</div>
+        <div class="nav-item" data-view="log">Meeting Log <span class="nav-count" id="logCount">0</span></div>
+        <a class="nav-item" href="https://nmrestimates.netlify.app" target="_blank" rel="noopener">Estimates ↗</a>
+        <a class="nav-item" href="https://nmrprojects.netlify.app" target="_blank" rel="noopener">Projects ↗</a>
+      </div>
       <div class="brand-caption">
         <div class="brand-line1">NMR Digital</div>
         <div class="brand-line2">Meeting Notes</div>
