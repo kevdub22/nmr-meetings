@@ -220,6 +220,8 @@
   .roster-add{display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--gray-border);}
   .roster-add input{flex:1;}
   .roster-remove{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;}
+  .roster-reset{background:none; border:none; color:#b8bfc9; cursor:pointer; font-size:19px; line-height:1; padding:0 2px; flex-shrink:0;}
+  .roster-reset:hover{color:var(--teal);}
   .roster-remove:hover{color:var(--red);}
   .roster-role-badge{
     font-size:11px; font-weight:700; color:var(--gray-text);
@@ -1130,7 +1132,7 @@ function renderRoster(){
           </div>
         </div>
         ${roleControl}
-        ${(!m.isPlaceholder && admin) ? `<span class="roster-remove" title="Email ${escAttr(m.name)} a link to set a new password" onclick="adminResetPassword('${escAttr(m.email)}')">⟳</span>` : ''}
+        ${(!m.isPlaceholder && admin) ? `<span class="roster-reset" title="Email ${escAttr(m.name)} a link to set a new password" onclick="adminResetPassword('${escAttr(m.email)}')">⟳</span>` : ''}
         ${(!isMe && admin) ? `<span class="roster-remove" title="Remove member" onclick="removeMember('${m.id}')">✕</span>` : ''}
       </div>`;
     }).join('');
