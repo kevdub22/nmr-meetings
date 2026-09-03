@@ -524,7 +524,7 @@
         <div class="card-sub">Optional — connect this meeting to an existing board or estimate.</div>
         <div class="grid grid-3">
           <div><label>Linked Project Board</label><select id="fLinkedBoard" onchange="onLinkedBoardChange()"><option value="">— None —</option></select></div>
-          <div><label>List</label><select id="fLinkedList" onchange="onLinkedListChange()" disabled><option value="">— Default (Potential) —</option></select></div>
+          <div><label>List</label><select id="fLinkedList" onchange="onLinkedListChange()" disabled><option value="">— Default (Potentials) —</option></select></div>
           <div><label>Linked Estimate</label><select id="fLinkedEstimate"><option value="">— None —</option></select></div>
         </div>
       </div>
@@ -1020,14 +1020,14 @@ async function populateLinkedListDropdown(){
   if(!sel) return;
   const boardId = state.linkedBoardId;
   if(!boardId){
-    sel.innerHTML = '<option value="">— Default (Potential) —</option>';
+    sel.innerHTML = '<option value="">— Default (Potentials) —</option>';
     sel.value = '';
     sel.disabled = true;
     return;
   }
   const lists = await loadListsForBoard(boardId);
   sel.disabled = false;
-  sel.innerHTML = '<option value="">— Default (Potential) —</option>' +
+  sel.innerHTML = '<option value="">— Default (Potentials) —</option>' +
     lists.map(l=>`<option value="${l.id}">${escHtml(l.name||'Untitled List')}</option>`).join('');
   sel.value = lists.some(l=>l.id === state.linkedListId) ? state.linkedListId : '';
   state.linkedListId = sel.value;
@@ -1630,7 +1630,7 @@ async function downloadMeetingPdf(){
   }
 }
 
-const PROJECT_CARD_LIST_NAME = 'Potential';
+const PROJECT_CARD_LIST_NAME = 'Potentials';
 
 async function findOrCreatePotentialListId(boardId){
   const listsSnap = await db.collection('boards').doc(boardId).collection('lists').get();
