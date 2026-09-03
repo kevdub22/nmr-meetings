@@ -522,8 +522,9 @@
       <div class="card">
         <div class="card-title">Related</div>
         <div class="card-sub">Optional — connect this meeting to an existing board or estimate.</div>
-        <div class="grid grid-2">
+        <div class="grid grid-3">
           <div><label>Linked Project Board</label><select id="fLinkedBoard" onchange="onLinkedBoardChange()"><option value="">— None —</option></select></div>
+          <div><label>List</label><select id="fLinkedList" onchange="onLinkedListChange()" disabled><option value="">— Default (Potential) —</option></select></div>
           <div><label>Linked Estimate</label><select id="fLinkedEstimate"><option value="">— None —</option></select></div>
         </div>
       </div>
@@ -676,6 +677,7 @@ function showConfigBanner(){
 /* ---------------- Data ---------------- */
 let meetings = [];
 let boardsCache = [];
+let listsCacheByBoard = {};
 let estimatesCache = [];
 let membersCache = [];
 let salespeopleCache = [];
@@ -703,7 +705,7 @@ function blankMeeting(){
     projectCode:'', eventDate:'', budget:'',
     servicesDiscussed:'', notes:'', nextSteps:'',
     checklist:[], archived:false,
-    linkedBoardId:'', linkedEstimateId:'',
+    linkedBoardId:'', linkedListId:'', linkedEstimateId:'',
     jobType:'', labelIds:[], memberIds:[], salespersonId:''
   };
 }
@@ -864,6 +866,7 @@ function renderForm(){
   document.getElementById('fNotes').innerHTML = state.notes || '';
   document.getElementById('fNextSteps').innerHTML = state.nextSteps || '';
   document.getElementById('fLinkedBoard').value = state.linkedBoardId || '';
+  populateLinkedListDropdown();
   document.getElementById('fLinkedEstimate').value = state.linkedEstimateId || '';
   document.getElementById('fJobType').value = state.jobType || '';
   document.getElementById('fSalesperson').value = state.salespersonId || '';
@@ -887,6 +890,7 @@ function readForm(){
   state.notes = document.getElementById('fNotes').innerHTML;
   state.nextSteps = document.getElementById('fNextSteps').innerHTML;
   state.linkedBoardId = document.getElementById('fLinkedBoard').value;
+  state.linkedListId = document.getElementById('fLinkedList').value;
   state.linkedEstimateId = document.getElementById('fLinkedEstimate').value;
   state.jobType = document.getElementById('fJobType').value;
   state.salespersonId = document.getElementById('fSalesperson').value;
@@ -948,7 +952,9 @@ function renderConvertStatus(){
   const cardStatus = document.getElementById('cardLinkStatus');
   const cardBtn = document.getElementById('btnCreateCard');
   if(board){
-    cardStatus.innerHTML = `✓ Linked to <a href="https://nmrprojects.netlify.app/#b/${board.id}" target="_blank" rel="noopener">${escHtml(board.name||'Untitled Board')} ↗</a>`;
+    const list = (listsCacheByBoard[board.id]||[]).find(l=>l.id === state.linkedListId);
+    const listBit = list ? ` — <strong>${escHtml(list.name||'Untitled List')}</strong> list` : '';
+    cardStatus.innerHTML = `✓ Linked to <a href="https://nmrprojects.netlify.app/#b/${board.id}" target="_blank" rel="noopener">${escHtml(board.name||'Untitled Board')} ↗</a>${listBit}`;
     cardBtn.textContent = 'Add Another Card';
   } else {
     cardStatus.textContent = '';
@@ -986,9 +992,45 @@ function populateSalespersonDropdown(){
     salespeopleCache.map(s=>`<option value="${s.id}">${escHtml(s.label||'')}</option>`).join('');
   sel.value = cur;
 }
-function onLinkedBoardChange(){
+async function onLinkedBoardChange(){
   state.linkedBoardId = document.getElementById('fLinkedBoard').value;
+  state.linkedListId = '';
+  await populateLinkedListDropdown();
   renderConvertStatus();
+}
+function onLinkedListChange(){
+  state.linkedListId = document.getElementById('fLinkedList').value;
+}
+async function loadListsForBoard(boardId){
+  if(!boardId) return [];
+  if(listsCacheByBoard[boardId]) return listsCacheByBoard[boardId];
+  try{
+    const snap = await db.collection('boards').doc(boardId).collection('lists').get();
+    const lists = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    lists.sort((a,b)=> (a.pos ?? 0) - (b.pos ?? 0));
+    listsCacheByBoard[boardId] = lists;
+    return lists;
+  }catch(e){
+    console.error(e);
+    return [];
+  }
+}
+async function populateLinkedListDropdown(){
+  const sel = document.getElementById('fLinkedList');
+  if(!sel) return;
+  const boardId = state.linkedBoardId;
+  if(!boardId){
+    sel.innerHTML = '<option value="">— Default (Potential) —</option>';
+    sel.value = '';
+    sel.disabled = true;
+    return;
+  }
+  const lists = await loadListsForBoard(boardId);
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">— Default (Potential) —</option>' +
+    lists.map(l=>`<option value="${l.id}">${escHtml(l.name||'Untitled List')}</option>`).join('');
+  sel.value = lists.some(l=>l.id === state.linkedListId) ? state.linkedListId : '';
+  state.linkedListId = sel.value;
 }
 function onJobTypeChange(){
   state.jobType = document.getElementById('fJobType').value;
@@ -1620,7 +1662,8 @@ async function createProjectCardFromMeeting(){
       });
       boardsCache.push({id:boardId, name:boardName, pos});
     }
-    const targetListId = await findOrCreatePotentialListId(boardId);
+    const targetListId = state.linkedListId || await findOrCreatePotentialListId(boardId);
+    delete listsCacheByBoard[boardId];
     const cardsSnap = await db.collection('boards').doc(boardId).collection('cards')
       .where('listId', '==', targetListId).get();
     const existingCards = cardsSnap.docs.map(d=>d.data());
@@ -1639,8 +1682,11 @@ async function createProjectCardFromMeeting(){
     });
     await db.collection('boards').doc(boardId).update({updatedAt: new Date().toISOString()});
     state.linkedBoardId = boardId;
-    await saveMeeting();
+    state.linkedListId = targetListId;
     populateLinkDropdowns();
+    document.getElementById('fLinkedBoard').value = boardId;
+    await populateLinkedListDropdown();
+    await saveMeeting();
     renderConvertStatus();
     showToast("Project card created");
   }catch(e){
