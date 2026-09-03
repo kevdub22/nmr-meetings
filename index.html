@@ -580,6 +580,7 @@
         <div class="page-sub" style="margin:-6px 0 14px 0;">People appear here automatically the first time they sign in to Planner, Estimates, or Meetings — you can edit your own name, and it updates everywhere. Add someone below to reference them before they have an account.</div>
         <div id="rosterList"></div>
         <div class="roster-add" id="rosterAdd"></div>
+        <div class="roster-add" id="rosterInvite" hidden></div>
       </div>
     </div>
 
@@ -635,6 +636,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-functions-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -654,6 +656,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+const functions = firebase.functions();
 
 const ALLOWED_DOMAIN = 'nmrevents.com';
 function isStaffUser(user){
@@ -1127,7 +1130,8 @@ function renderRoster(){
           </div>
         </div>
         ${roleControl}
-        ${isMe ? '' : `<span class="roster-remove" title="Remove member" onclick="removeMember('${m.id}')">✕</span>`}
+        ${(!m.isPlaceholder && admin) ? `<span class="roster-remove" title="Email ${escAttr(m.name)} a link to set a new password" onclick="adminResetPassword('${escAttr(m.email)}')">⟳</span>` : ''}
+        ${(!isMe && admin) ? `<span class="roster-remove" title="Remove member" onclick="removeMember('${m.id}')">✕</span>` : ''}
       </div>`;
     }).join('');
   }
@@ -1136,6 +1140,49 @@ function renderRoster(){
     <input type="text" id="newMemberName" placeholder="Add a teammate who hasn't signed in yet..."
       onkeydown="if(event.key==='Enter') addMember()">
     <button class="btn btn-primary btn-sm" onclick="addMember()">Add</button>`;
+  const inviteWrap = document.getElementById('rosterInvite');
+  if(inviteWrap){
+    inviteWrap.hidden = !isAdmin();
+    if(isAdmin()) inviteWrap.innerHTML = `
+      <input type="email" id="inviteEmail" placeholder="Invite by email — name@nmrevents.com" onkeydown="if(event.key==='Enter') inviteMember()">
+      <button class="btn btn-primary btn-sm" id="inviteBtn" onclick="inviteMember()">Invite</button>`;
+  }
+}
+/* Creates a real login (via the adminCreateMember Cloud Function, shared
+   with Planner and Estimates — same Firebase project, same Admin SDK) and
+   then immediately emails a "set your password" link through the same
+   sendPasswordResetEmail() flow as "Forgot your password?" on the sign-in
+   screen. The admin never sees or sets the actual password. */
+async function inviteMember(){
+  const emailInput = document.getElementById('inviteEmail');
+  const email = (emailInput?.value || '').trim();
+  if(!email) return;
+  const btn = document.getElementById('inviteBtn');
+  btn.disabled = true;
+  try{
+    await functions.httpsCallable('adminCreateMember')({email});
+    await auth.sendPasswordResetEmail(email);
+    emailInput.value = '';
+    showToast(`Invited ${email} — they'll get an email to set their password`);
+  }catch(e){
+    console.error(e);
+    showToast(e.message || "Couldn't create that account");
+  }finally{
+    btn.disabled = false;
+  }
+}
+/* Admin-triggered version of "Forgot your password?" — same client call,
+   just aimed at someone else's address instead of whatever is typed into
+   the sign-in form. */
+async function adminResetPassword(email){
+  if(!email) return;
+  try{
+    await auth.sendPasswordResetEmail(email);
+    showToast(`Password reset link sent to ${email}`);
+  }catch(e){
+    console.error(e);
+    showToast("Couldn't send the reset email");
+  }
 }
 /* A real profile is only editable by the account it belongs to, or by an
    admin — the rules reject anyone else's write. A placeholder (added by
@@ -1186,7 +1233,9 @@ async function addMember(){
     console.error(e); showToast("Couldn't add member");
   }
 }
+/* Admin-only — firestore.rules enforces this same restriction server-side. */
 function removeMember(id){
+  if(!isAdmin()) return;
   const m = memberById(id);
   if(!m) return;
   if(!confirm(`Remove ${m.name} from the roster?`)) return;
